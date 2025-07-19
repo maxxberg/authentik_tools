@@ -69,6 +69,28 @@ func (a *AuthentikAPI) AddUsersToGroupByGroupString(group string, users []int32)
 	return a.AddUsersToGroup(groupsObject, users)
 }
 
+func (a *AuthentikAPI) RemoveUsersFromGroup(group *api.Group, users []int32) error {
+	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), api.ContextAccessToken, a.config.ApiKey), 10*time.Second)
+	defer cancel()
+	request := a.client.CoreApi.CoreGroupsRemoveUserCreate(ctx, group.Pk)
+	for _, user := range users {
+		uRequest := request.UserAccountRequest(*api.NewUserAccountRequest(user))
+		_, err := uRequest.Execute()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *AuthentikAPI) RemoveUsersFromGroupByGroupString(group string, users []int32) error {
+	groupsObject, err := a.GetGroupByName(group)
+	if err != nil {
+		return err
+	}
+	return a.RemoveUsersFromGroup(groupsObject, users)
+}
+
 func (a *AuthentikAPI) ListUsers() []api.User {
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), api.ContextAccessToken, a.config.ApiKey), 10*time.Second)
 	defer cancel()
