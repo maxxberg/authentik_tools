@@ -65,6 +65,7 @@ func (dr *DependencyResolver) getSubGroups(group *api.Group) []*api.Group {
 			for _, groupString := range sgs {
 				if group, err := dr.client.GetGroupByName(groupString.(string)); err == nil {
 					subGroups = slices.Concat(subGroups, []*api.Group{group})
+					subGroups = slices.Concat(subGroups, dr.getSubGroups(group))
 				}
 			}
 		} else {
