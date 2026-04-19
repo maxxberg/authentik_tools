@@ -3,7 +3,6 @@ package membership
 import (
 	"authentik_group_manager/authentik"
 	"log/slog"
-	"slices"
 
 	"goauthentik.io/api/v3"
 )
@@ -26,8 +25,8 @@ func NewDependencyResolver(client *authentik.AuthentikAPI, logger *slog.Logger) 
 		logger.Error("Error retrieving all groups", "error", err)
 		panic(err)
 	}
-	for _, group := range groups {
-		dR.groupMembers[group.Name] = &GroupUserDependency{Group: &group}
+	for _, g := range groups {
+		dR.groupMembers[g.Name] = &GroupUserDependency{Group: &g}
 	}
 	return dR
 }
@@ -36,23 +35,18 @@ func (dr *DependencyResolver) GetGroupMembers() map[string]*GroupUserDependency 
 	return dr.groupMembers
 }
 
-func (dr *DependencyResolver) ConsumeUser(user api.User) {
-	var userGroups []*api.Group
-	for _, group := range dr.getExplicitGroups(&user) {
-		subGroups := dr.getSubGroups(group)
-		if _, ok := dr.groupMembers[group.Name]; !ok {
-			dr.groupMembers[group.Name] = &GroupUserDependency{Group: group}
-		}
+func (dr *DependencyResolver) addUserToGroup(group *api.Group, user User) {
+	if _, ok := dr.groupMembers[group.Name]; !ok {
+		dr.groupMembers[group.Name] = &GroupUserDependency{Group: group}
+	}
+	dr.groupMembers[group.Name].Users = append(dr.groupMembers[group.Name].Users, user)
+}
 
-		dr.groupMembers[group.Name].Users = slices.Concat(dr.groupMembers[group.Name].Users, []User{&user})
-		if len(subGroups) > 0 {
-			userGroups = slices.Concat(userGroups, subGroups, []*api.Group{group})
-			for _, subSubGroup := range subGroups {
-				if _, ok := dr.groupMembers[subSubGroup.Name]; !ok {
-					dr.groupMembers[subSubGroup.Name] = &GroupUserDependency{Group: group}
-				}
-				dr.groupMembers[subSubGroup.Name].Users = slices.Concat(dr.groupMembers[subSubGroup.Name].Users, []User{&user})
-			}
+func (dr *DependencyResolver) ConsumeUser(user api.User) {
+	for _, group := range dr.getExplicitGroups(&user) {
+		dr.addUserToGroup(group, &user)
+		for _, sub := range dr.getSubGroups(group) {
+			dr.addUserToGroup(sub, &user)
 		}
 	}
 }
@@ -63,9 +57,9 @@ func (dr *DependencyResolver) getSubGroups(group *api.Group) []*api.Group {
 		sgs, ok2 := val.([]any)
 		if ok2 {
 			for _, groupString := range sgs {
-				if group, err := dr.client.GetGroupByName(groupString.(string)); err == nil {
-					subGroups = slices.Concat(subGroups, []*api.Group{group})
-					subGroups = slices.Concat(subGroups, dr.getSubGroups(group))
+				if sub, err := dr.client.GetGroupByName(groupString.(string)); err == nil {
+					subGroups = append(subGroups, sub)
+					subGroups = append(subGroups, dr.getSubGroups(sub)...)
 				}
 			}
 		} else {
@@ -100,7 +94,7 @@ func (dr *DependencyResolver) getExplicitGroups(user *api.User) []*api.Group {
 			dr.logger.Error("Group does not exist", "group", group)
 			continue
 		}
-		groups = slices.Concat(groups, []*api.Group{gbn})
+		groups = append(groups, gbn)
 	}
 	return groups
 }

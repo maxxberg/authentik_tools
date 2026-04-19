@@ -44,6 +44,9 @@ func (a *AuthentikAPI) GetGroupByName(groupName string) (*api.Group, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(result.Results) == 0 {
+		return nil, fmt.Errorf("no group found with name %q", groupName)
+	}
 	return &result.Results[0], nil
 }
 
@@ -61,14 +64,6 @@ func (a *AuthentikAPI) AddUsersToGroup(group *api.Group, users []int32) error {
 	return nil
 }
 
-func (a *AuthentikAPI) AddUsersToGroupByGroupString(group string, users []int32) error {
-	groupsObject, err := a.GetGroupByName(group)
-	if err != nil {
-		return err
-	}
-	return a.AddUsersToGroup(groupsObject, users)
-}
-
 func (a *AuthentikAPI) RemoveUsersFromGroup(group *api.Group, users []int32) error {
 	ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), api.ContextAccessToken, a.config.ApiKey), 10*time.Second)
 	defer cancel()
@@ -81,14 +76,6 @@ func (a *AuthentikAPI) RemoveUsersFromGroup(group *api.Group, users []int32) err
 		}
 	}
 	return nil
-}
-
-func (a *AuthentikAPI) RemoveUsersFromGroupByGroupString(group string, users []int32) error {
-	groupsObject, err := a.GetGroupByName(group)
-	if err != nil {
-		return err
-	}
-	return a.RemoveUsersFromGroup(groupsObject, users)
 }
 
 func (a *AuthentikAPI) ListUsers() []api.User {
