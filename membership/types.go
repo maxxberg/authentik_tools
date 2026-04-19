@@ -8,8 +8,9 @@ import (
 )
 
 type GroupUserDependency struct {
-	Group *api.Group
-	Users []User
+	Group           *api.Group
+	Users           []User
+	BlacklistedUsers []User
 }
 
 type DependencyResolver struct {
@@ -43,12 +44,59 @@ func (dr *DependencyResolver) addUserToGroup(group *api.Group, user User) {
 }
 
 func (dr *DependencyResolver) ConsumeUser(user api.User) {
-	for _, group := range dr.getExplicitGroups(&user) {
+	blacklisted := make(map[string]bool)
+	explicitGroups := dr.getExplicitGroups(&user)
+
+	// Collect all blacklisted group names from the user's explicit groups
+	for _, group := range explicitGroups {
+		for _, name := range dr.getBlacklistGroups(group) {
+			blacklisted[name] = true
+		}
+	}
+
+	for _, group := range explicitGroups {
+		if blacklisted[group.Name] {
+			dr.blacklistUserFromGroup(group, &user)
+			continue
+		}
 		dr.addUserToGroup(group, &user)
 		for _, sub := range dr.getSubGroups(group) {
+			if blacklisted[sub.Name] {
+				dr.blacklistUserFromGroup(sub, &user)
+				continue
+			}
 			dr.addUserToGroup(sub, &user)
 		}
 	}
+}
+
+func (dr *DependencyResolver) blacklistUserFromGroup(group *api.Group, user User) {
+	if _, ok := dr.groupMembers[group.Name]; !ok {
+		dr.groupMembers[group.Name] = &GroupUserDependency{Group: group}
+	}
+	dr.groupMembers[group.Name].BlacklistedUsers = append(dr.groupMembers[group.Name].BlacklistedUsers, user)
+}
+
+func (dr *DependencyResolver) getBlacklistGroups(group *api.Group) []string {
+	val, ok := group.Attributes["blacklistGroups"]
+	if !ok {
+		return nil
+	}
+	items, ok := val.([]any)
+	if !ok {
+		dr.logger.Error("blacklistGroups is not a list", "group", group.Name)
+		return nil
+	}
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		name, ok := item.(string)
+		if !ok {
+			dr.logger.Error("blacklistGroups contains a non-string member", "group", group.Name)
+			return names
+		}
+		names = append(names, name)
+	}
+	return names
 }
 
 func (dr *DependencyResolver) getSubGroups(group *api.Group) []*api.Group {

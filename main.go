@@ -15,6 +15,12 @@ func diffUsers(a, b []membership.User) (pks []int32, names []string) {
 		if user.GetEmail() == "" {
 			continue
 		}
+		if !user.HasAttributes() {
+			continue
+		}
+		if _, ok := user.GetAttributes()["explicitGroups"]; !ok {
+			continue
+		}
 		if !slices.ContainsFunc(b, func(other membership.User) bool {
 			return user.GetUid() == other.GetUid()
 		}) {
@@ -63,6 +69,17 @@ func main() {
 		}
 
 		removePKs, removeNames := diffUsers(actual, gMembers.Users)
+
+		// Blacklisted users must be removed even if not in the expected set
+		for _, bl := range gMembers.BlacklistedUsers {
+			if slices.ContainsFunc(actual, func(u membership.User) bool {
+				return u.GetUid() == bl.GetUid()
+			}) {
+				removePKs = append(removePKs, bl.GetPk())
+				removeNames = append(removeNames, bl.GetName())
+			}
+		}
+
 		if err := client.RemoveUsersFromGroup(gMembers.Group, removePKs); err != nil {
 			logger.Error("Error removing users from group", "error", err)
 		}
